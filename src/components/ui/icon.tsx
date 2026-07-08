@@ -1,0 +1,55 @@
+import {
+  BookOpen,
+  Feather,
+  Flame,
+  GraduationCap,
+  Languages,
+  Library,
+  Lightbulb,
+  Medal,
+  MessageCircle,
+  Mic,
+  Moon,
+  Music,
+  Palette,
+  PenTool,
+  Quote,
+  ScrollText,
+  Sparkles,
+  Star,
+  Sunrise,
+  Target,
+  Trophy,
+  Zap,
+  type LucideIcon,
+} from "lucide-react";
+
+const ICONS: Record<string, LucideIcon> = {
+  BookOpen,
+  Feather,
+  Flame,
+  GraduationCap,
+  Languages,
+  Library,
+  Lightbulb,
+  Medal,
+  MessageCircle,
+  Mic,
+  Moon,
+  Music,
+  Palette,
+  PenTool,
+  Quote,
+  ScrollText,
+  Sparkles,
+  Star,
+  Sunrise,
+  Target,
+  Trophy,
+  Zap,
+};
+
+export function DynamicIcon({ name, className }: { name: string; className?: string }) {
+  const Icon = ICONS[name] ?? Lightbulb;
+  return <Icon className={className} aria-hidden />;
+}

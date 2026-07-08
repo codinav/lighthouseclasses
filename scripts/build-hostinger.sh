@@ -1,0 +1,72 @@
+#!/bin/bash
+# Builds the static-export version of Lighthouse Classes and packages it as
+# a zip ready to upload on Hostinger (extract into public_html).
+#
+# Hostinger's upload wizard rejects anything that looks like a framework
+# project ("Unsupported framework or invalid project structure") — including
+# static exports containing a `_next` folder. So after exporting we rename
+# `_next` → `assets` and rewrite every reference, leaving a plain static site.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+echo "→ Preparing static-export build (middleware & API routes excluded)…"
+STASH=".export-stash"
+mkdir -p "$STASH"
+restore() {
+  [ -e "$STASH/middleware.ts" ] && mv "$STASH/middleware.ts" src/middleware.ts
+  [ -e "$STASH/api" ] && mv "$STASH/api" src/app/api
+  rmdir "$STASH" 2>/dev/null || true
+}
+trap restore EXIT
+[ -e src/middleware.ts ] && mv src/middleware.ts "$STASH/middleware.ts"
+[ -e src/app/api ] && mv src/app/api "$STASH/api"
+
+echo "→ Building…"
+rm -rf out
+STATIC_EXPORT=1 npx next build
+
+echo "→ De-framework-ing: renaming _next → assets and rewriting references…"
+mv out/_next out/assets
+# Rewrite /_next/ → /assets/ in every text asset (HTML, JS, CSS, RSC payloads)
+LC_ALL=C find out -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" -o -name "*.txt" \) \
+  -exec sed -i '' 's|/_next/|/assets/|g' {} +
+
+echo "→ Adding .htaccess for Apache/LiteSpeed…"
+cat > out/.htaccess <<'HTACCESS'
+Options -Indexes
+ErrorDocument 404 /404.html
+
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  <FilesMatch "\.(js|css|woff2)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>
+
+AddType application/manifest+json .webmanifest
+AddType image/svg+xml .svg
+AddType video/mp4 .mp4
+AddType video/webm .webm
+HTACCESS
+
+echo "→ Adding Hostinger video-upload script (api/upload.php) + raised PHP limits…"
+# Keep the upload script's token in sync with src/lib/config.ts automatically.
+TOKEN=$(grep -A2 'HOSTINGER_UPLOAD_TOKEN =' src/lib/config.ts | grep -oE '"[^"]+"' | tail -1 | tr -d '"')
+if [ -z "$TOKEN" ]; then echo "  ! Could not read HOSTINGER_UPLOAD_TOKEN from config.ts"; exit 1; fi
+mkdir -p out/api out/videos
+sed "s|__UPLOAD_TOKEN__|${TOKEN}|g" hostinger-extras/api/upload.php > out/api/upload.php
+cp hostinger-extras/api/.user.ini out/api/.user.ini
+cp hostinger-extras/.user.ini out/.user.ini
+# Guarantee the (initially empty) videos folder ships inside the zip.
+printf '<!doctype html><title>Videos</title>\n' > out/videos/index.html
+
+echo "→ Zipping…"
+ZIP="lighthouse-classes-hostinger.zip"
+rm -f "$ZIP"
+(cd out && zip -qr "../$ZIP" . -x "*.DS_Store")
+cp -f "$ZIP" "$HOME/Desktop/$ZIP"
+
+echo "✓ Done: $ZIP ($(du -h "$ZIP" | cut -f1 | xargs)) — copy placed on your Desktop."
+echo "  Hostinger → File Manager → public_html → upload zip → Extract."
+echo "  Device video uploads store into public_html/videos via api/upload.php."

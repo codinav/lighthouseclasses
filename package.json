@@ -1,0 +1,37 @@
+{
+  "name": "lighthouse-classes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lighthouse Classes — Guiding Every Learner Towards Excellence. A premium learning platform.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:dict": "node scripts/build-dictionary.mjs",
+    "build:dict:sources": "node scripts/build-source-pages.mjs",
+    "build:dict:urdu": "node scripts/build-urdu-sources.mjs",
+    "build:dict:farhang": "node scripts/build-farhang-anchors.mjs",
+    "harvest:platts": "node scripts/harvest-platts.mjs",
+    "build:platts": "node scripts/build-platts.mjs",
+    "build:hostinger": "bash scripts/build-hostinger.sh",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.110.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.454.0",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3"
+  }
+}

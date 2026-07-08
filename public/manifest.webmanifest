@@ -1,0 +1,32 @@
+{
+  "name": "Lighthouse Classes",
+  "short_name": "Lighthouse",
+  "description": "Guiding Every Learner Towards Excellence. Premium courses, live classes, and mentorship.",
+  "id": "/",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#211C17",
+  "theme_color": "#211C17",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Continue learning", "url": "/dashboard", "description": "Resume your last lesson" },
+    { "name": "Live classes", "url": "/live", "description": "Today's live schedule" },
+    { "name": "Explore courses", "url": "/courses", "description": "Browse the course library" }
+  ]
+}
