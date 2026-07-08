@@ -27,9 +27,11 @@ STATIC_EXPORT=1 npx next build
 
 echo "→ De-framework-ing: renaming _next → assets and rewriting references…"
 mv out/_next out/assets
-# Rewrite /_next/ → /assets/ in every text asset (HTML, JS, CSS, RSC payloads)
+# Rewrite /_next/ → /assets/ in every text asset (HTML, JS, CSS, RSC payloads).
+# perl -pi is used instead of `sed -i` so this works identically on macOS (BSD
+# sed) and Linux/CI (GNU sed), whose in-place flags are incompatible.
 LC_ALL=C find out -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" -o -name "*.txt" \) \
-  -exec sed -i '' 's|/_next/|/assets/|g' {} +
+  -exec perl -pi -e 's{/_next/}{/assets/}g' {} +
 
 echo "→ Adding .htaccess for Apache/LiteSpeed…"
 cat > out/.htaccess <<'HTACCESS'
