@@ -65,8 +65,9 @@ echo "→ Zipping…"
 ZIP="lighthouse-classes-hostinger.zip"
 rm -f "$ZIP"
 (cd out && zip -qr "../$ZIP" . -x "*.DS_Store")
-cp -f "$ZIP" "$HOME/Desktop/$ZIP"
+# Copy to Desktop for the manual-upload workflow (skipped in CI, where it's absent).
+[ -d "$HOME/Desktop" ] && cp -f "$ZIP" "$HOME/Desktop/$ZIP"
 
-echo "✓ Done: $ZIP ($(du -h "$ZIP" | cut -f1 | xargs)) — copy placed on your Desktop."
+echo "✓ Done: $ZIP ($(du -h "$ZIP" | cut -f1 | xargs)); static site in ./out"
 echo "  Hostinger → File Manager → public_html → upload zip → Extract."
 echo "  Device video uploads store into public_html/videos via api/upload.php."
