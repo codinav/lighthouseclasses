@@ -48,7 +48,8 @@ for GHOST in \
   out/assets/Pl8ovB1Hmv0eA6f30_-5c \
   out/assets/static/Pl8ovB1Hmv0eA6f30_-5c \
   out/assets/oTeQnFTkqprG3YfZmCusA \
-  out/assets/static/oTeQnFTkqprG3YfZmCusA; do
+  out/assets/static/oTeQnFTkqprG3YfZmCusA \
+  out/assets/static/wRQh-13-_McWTp70VmAzJ; do
   mkdir -p "$GHOST"
   printf 'placeholder — see build-hostinger.sh\n' > "$GHOST/keep.txt"
 done
@@ -63,6 +64,11 @@ ErrorDocument 404 /404.html
   Header set Referrer-Policy "strict-origin-when-cross-origin"
   <FilesMatch "\.(js|css|woff2)$">
     Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <!-- The build id is pinned ("lh"), so the manifests' paths never change —
+       they must not be cached immutably like the content-hashed chunks. -->
+  <FilesMatch "_(build|ssg)Manifest\.js$">
+    Header set Cache-Control "no-cache"
   </FilesMatch>
 </IfModule>
 

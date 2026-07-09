@@ -14,6 +14,12 @@ const nextConfig = {
     ? {
         output: "export",
         trailingSlash: true,
+        // Constant build id: assets/static/<id> keeps the same name every
+        // deploy, so the FTP sync never schedules a folder deletion — the
+        // Hostinger server prunes emptied folders faster than the sync can
+        // RMD them, which crashed deploys. Chunks stay content-hashed, so
+        // caching is unaffected; the manifests get a no-cache .htaccess rule.
+        generateBuildId: async () => "lh",
       }
     : {
         async headers() {
