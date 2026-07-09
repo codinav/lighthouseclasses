@@ -37,7 +37,7 @@ import {
   type ShersFile,
 } from "./data";
 
-const POPULAR = ["muḥabbat", "ʿishq", "dil", "zindagī", "ḵẖvāb", "dostī", "āsmān", "dāstān"];
+const POPULAR = ["mohabbat", "ishq", "dil", "zindagi", "khwab", "dosti", "aasman", "nasheman"];
 
 export function PlattsClient() {
   const router = useRouter();

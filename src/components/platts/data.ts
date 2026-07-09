@@ -123,9 +123,17 @@ export interface PlattsIndexFile {
 }
 
 interface Keys {
+  /** normalized urdu headword */
   u: string;
-  r: string;
+  /** strict roman variants (first = headword's own romanization) */
+  rv: string[];
+  /** loose roman variants (vowel-folded) */
+  lv: string[];
+  /** consonant skeletons of the loose variants */
+  sv: string[];
+  /** folded devanagari headword */
   d: string;
+  /** lowercased brief definition */
   g: string;
 }
 
@@ -137,8 +145,22 @@ export interface PlattsIndex extends PlattsIndexFile {
 /* Normalization                                                       */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Normalize Urdu script for matching. Platts' digitisation mixes Arabic and
+ * Urdu codepoints (ي/ی, ك/ک, ه/ہ …), while users type on Urdu keyboards —
+ * fold both sides onto one repertoire and drop diacritics.
+ */
 export function stripUrdu(s: string): string {
-  return s.replace(/[ً-ٰٕـ]/g, "").normalize("NFC");
+  return s
+    .normalize("NFC")
+    .replace(/[ً-ٰٕٓٔـ]/g, "")
+    .replace(/[يىئے]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/[هةھ]/g, "ہ")
+    .replace(/[آأٱ]/g, "ا")
+    .replace(/ؤ/g, "و")
+    .replace(/ں/g, "ن")
+    .replace(/ء/g, "");
 }
 
 export function foldRoman(s: string): string {
@@ -146,12 +168,45 @@ export function foldRoman(s: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-͢]/g, "")
-    .replace(/[ʻʼʿʾ'’‘`_-]/g, "")
+    .replace(/[ʻʼʿʾ'’‘`_.·-]/g, "")
     .replace(/x/g, "kh")
     .replace(/v/g, "w")
     .replace(/q/g, "k")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Modern romanization types چ as "ch" and چھ as "chh"; Platts writes ć / ćh,
+ * which fold to "c" / "ch". Map typed queries onto Platts' convention.
+ */
+function chFix(s: string): string {
+  return s.replace(/chh/g, "\x01").replace(/ch/g, "c").replace(/\x01/g, "ch");
+}
+
+/**
+ * Loose fold: conflate the spelling families people actually type
+ * (mohabbat/muhabbat, nasheman/nisheman, zindagi/jindagi …) by collapsing
+ * every vowel run to one letter and merging near-equivalent consonants.
+ */
+function looseRoman(s: string): string {
+  return s
+    .replace(/ch/g, "c")
+    .replace(/sh/g, "s")
+    .replace(/ph/g, "f")
+    .replace(/z/g, "j")
+    .replace(/[aeiouy]+/g, "a")
+    .replace(/(.)\1+/g, "$1");
+}
+
+/** Consonant skeleton of a loose form — the last-resort match (khwab/khawab). */
+function skeleton(loose: string): string {
+  return loose.replace(/(?!^)a/g, "");
+}
+
+/** Fold Devanagari for matching: drop nuktas, unify explicit nasals with anusvara. */
+function foldDeva(s: string): string {
+  return s.normalize("NFD").replace(/़/g, "").normalize("NFC").replace(/[नम]्(?=[क-ह])/g, "ं");
 }
 
 export const hasUrduScript = (s: string) => /[؀-ۿ]/.test(s);
@@ -171,12 +226,21 @@ export function loadIndex(): Promise<PlattsIndex> {
         return r.json() as Promise<PlattsIndexFile>;
       })
       .then((file) => {
-        const keys: Keys[] = file.rows.map(([u, r, d, , g]) => ({
-          u: stripUrdu(u),
-          r: foldRoman(r),
-          d,
-          g: g.toLowerCase(),
-        }));
+        const keys: Keys[] = file.rows.map(([u, r, d, , g]) => {
+          const rv = foldRoman(r)
+            .split(/\s*[,;]\s*/)
+            .filter((x) => x && x !== "lit");
+          if (!rv.length) rv.push("");
+          const lv = rv.map(looseRoman);
+          return {
+            u: stripUrdu(u),
+            rv,
+            lv,
+            sv: lv.map(skeleton),
+            d: d && foldDeva(d),
+            g: g.toLowerCase(),
+          };
+        });
         return { ...file, keys };
       })
       .catch((err) => {
@@ -217,6 +281,42 @@ function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Weighted edit distance between folded roman forms: vowel-ish edits are
+ * cheap (that's where spellings legitimately vary), consonant edits dear.
+ * Capped at 12 — beyond that the words are simply different.
+ */
+const DEL_CHEAP = new Set("aeiouh");
+const SUB_CHEAP = new Set("aeiouyh");
+function editDist(a: string, b: string): number {
+  if (a === b) return 0;
+  const m = a.length;
+  const n = b.length;
+  if (Math.abs(m - n) > 6) return 12;
+  const cost = (c: string) => (DEL_CHEAP.has(c) ? 1 : 2);
+  let prev: number[] = [0];
+  for (let j = 1; j <= n; j++) prev[j] = prev[j - 1] + cost(b[j - 1]);
+  for (let i = 1; i <= m; i++) {
+    const ca = a[i - 1];
+    const ka = cost(ca);
+    const cur: number[] = [prev[0] + ka];
+    for (let j = 1; j <= n; j++) {
+      const cb = b[j - 1];
+      const sub = ca === cb ? 0 : SUB_CHEAP.has(ca) && SUB_CHEAP.has(cb) ? 1 : 2;
+      cur[j] = Math.min(prev[j] + ka, cur[j - 1] + cost(cb), prev[j - 1] + sub);
+    }
+    prev = cur;
+  }
+  return Math.min(prev[n], 12);
+}
+
+/** Distance to the entry's own romanization; cross-referenced variants count +1. */
+function effDist(nq: string, rv: string[]): number {
+  let d = editDist(nq, rv[0]);
+  for (let i = 1; i < rv.length && d > 1; i++) d = Math.min(d, editDist(nq, rv[i]) + 1);
+  return Math.min(d, 12);
+}
+
 /** Rank matches in any script (or English meaning). Returns row positions. */
 export function search(idx: PlattsIndex, query: string, limit = 60): number[] {
   const q = query.trim();
@@ -228,31 +328,43 @@ export function search(idx: PlattsIndex, query: string, limit = 60): number[] {
     const nq = stripUrdu(q);
     for (let i = 0; i < keys.length; i++) {
       const u = keys[i].u;
-      if (u === nq) scored.push([i, 100]);
-      else if (u.startsWith(nq)) scored.push([i, 60]);
-      else if (u.includes(nq)) scored.push([i, 20]);
+      if (u === nq) scored.push([i, 1000]);
+      else if (u.startsWith(nq)) scored.push([i, 620]);
+      else if (u.includes(nq)) scored.push([i, 200]);
     }
   } else if (hasDevanagari(q)) {
+    const nq = foldDeva(q);
     for (let i = 0; i < keys.length; i++) {
       const d = keys[i].d;
       if (!d) continue;
-      if (d === q) scored.push([i, 100]);
-      else if (d.startsWith(q)) scored.push([i, 60]);
-      else if (d.includes(q)) scored.push([i, 20]);
+      if (d === nq) scored.push([i, 1000]);
+      else if (d.startsWith(nq)) scored.push([i, 620]);
+      else if (d.includes(nq)) scored.push([i, 200]);
     }
   } else {
-    const nq = foldRoman(q);
+    const nq = chFix(foldRoman(q));
+    const lq = looseRoman(nq);
+    const sq = skeleton(lq);
     const eq = q.toLowerCase();
     if (!nq && !eq) return [];
     const wordRe = new RegExp(`(^|[^a-z])${escapeRe(eq)}([^a-z]|$)`);
     for (let i = 0; i < keys.length; i++) {
-      const { r, g } = keys[i];
-      if (nq && r === nq) scored.push([i, 100]);
-      else if (nq && r.startsWith(nq)) scored.push([i, 62]);
-      else if (g === eq) scored.push([i, 55]);
-      else if (wordRe.test(g)) scored.push([i, 42]);
-      else if (nq && r.includes(nq)) scored.push([i, 16]);
-      else if (eq.length >= 3 && g.includes(eq)) scored.push([i, 10]);
+      const k = keys[i];
+      let s = 0;
+      let m: RegExpExecArray | null;
+      if (k.rv[0] === nq) s = 1000;
+      else if (k.rv.includes(nq)) s = 930;
+      else if (nq && k.rv[0].startsWith(nq)) s = 620;
+      else if (nq && k.rv.some((v) => v.startsWith(nq))) s = 600;
+      else if (k.g === eq) s = 550;
+      else if ((m = wordRe.exec(k.g))) s = 500 - Math.min(40, Math.round(m.index / 3));
+      else if (k.lv.includes(lq)) s = 480 - 8 * effDist(nq, k.rv);
+      else if (lq.length >= 2 && k.lv[0].startsWith(lq)) s = 340;
+      else if (lq.length >= 2 && k.lv.some((v) => v.startsWith(lq))) s = 330;
+      else if (sq.length >= 2 && k.sv.includes(sq)) s = 260 - 8 * effDist(nq, k.rv);
+      else if (nq.length >= 3 && k.rv.some((v) => v.includes(nq))) s = 160;
+      else if (eq.length >= 3 && k.g.includes(eq)) s = 100;
+      if (s) scored.push([i, s]);
     }
   }
 
