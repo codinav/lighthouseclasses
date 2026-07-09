@@ -37,12 +37,17 @@ LC_ALL=C find out -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" -o 
 # sync-state but never creates them on the server — nothing to upload — so the
 # NEXT deploy crashes (550) removing a folder that never existed. Missing-file
 # deletes are tolerated; missing-FOLDER removes are fatal. Prevent new ghosts
-# by dropping empty dirs from the upload entirely…
+# by dropping empty dirs from the upload entirely.
 find out -type d -empty -delete
-# …and materialize the one ghost already recorded (from the 2026-07-09 runs)
-# so its pending deletion succeeds. Safe to remove after one green deploy.
-mkdir -p out/assets/oTeQnFTkqprG3YfZmCusA
-printf 'placeholder — see build-hostinger.sh\n' > out/assets/oTeQnFTkqprG3YfZmCusA/keep.txt
+
+# PERMANENT shims (do not remove): these build-id folders are recorded in the
+# server's sync-state from 2026-07-09. Hostinger prunes folders server-side,
+# so any RMD the action schedules for them can crash a deploy. Keeping the
+# placeholders in every build means no folder delete is ever scheduled.
+for GHOST in out/assets/Pl8ovB1Hmv0eA6f30_-5c out/assets/static/Pl8ovB1Hmv0eA6f30_-5c out/assets/oTeQnFTkqprG3YfZmCusA; do
+  mkdir -p "$GHOST"
+  printf 'placeholder — see build-hostinger.sh\n' > "$GHOST/keep.txt"
+done
 
 echo "→ Adding .htaccess for Apache/LiteSpeed…"
 cat > out/.htaccess <<'HTACCESS'
