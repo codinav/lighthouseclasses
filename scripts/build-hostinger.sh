@@ -44,7 +44,11 @@ find out -type d -empty -delete
 # server's sync-state from 2026-07-09. Hostinger prunes folders server-side,
 # so any RMD the action schedules for them can crash a deploy. Keeping the
 # placeholders in every build means no folder delete is ever scheduled.
-for GHOST in out/assets/Pl8ovB1Hmv0eA6f30_-5c out/assets/static/Pl8ovB1Hmv0eA6f30_-5c out/assets/oTeQnFTkqprG3YfZmCusA; do
+for GHOST in \
+  out/assets/Pl8ovB1Hmv0eA6f30_-5c \
+  out/assets/static/Pl8ovB1Hmv0eA6f30_-5c \
+  out/assets/oTeQnFTkqprG3YfZmCusA \
+  out/assets/static/oTeQnFTkqprG3YfZmCusA; do
   mkdir -p "$GHOST"
   printf 'placeholder — see build-hostinger.sh\n' > "$GHOST/keep.txt"
 done
