@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/providers";
 import { googleConfigured } from "@/lib/config";
+import { isNativeApp } from "@/lib/native-app";
 
 function GoogleIcon() {
   return (
@@ -23,6 +24,13 @@ export function SocialButtons() {
   const params = useSearchParams();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [inApp, setInApp] = useState(false);
+
+  // Google blocks OAuth inside Android WebViews ("disallowed_useragent"),
+  // so the app offers e-mail sign-in only. (Detected after mount to keep
+  // server and client renders identical.)
+  useEffect(() => setInApp(isNativeApp()), []);
+  if (inApp) return null;
 
   const google = async () => {
     setError("");
@@ -58,6 +66,9 @@ export function SocialButtons() {
 }
 
 export function OrDivider() {
+  const [inApp, setInApp] = useState(false);
+  useEffect(() => setInApp(isNativeApp()), []);
+  if (inApp) return null;
   return (
     <div className="my-6 flex items-center gap-4" role="separator">
       <span className="h-px flex-1 bg-[var(--lh-line)]" />

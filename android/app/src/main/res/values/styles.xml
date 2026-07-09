@@ -13,6 +13,11 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Match the site's light chrome: paper-cream status bar, dark icons.
+             values-v27 / values-v35 extend this for nav bar + edge-to-edge. -->
+        <item name="android:windowBackground">#FAF6EE</item>
+        <item name="android:statusBarColor">#FAF6EE</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 

@@ -5,8 +5,10 @@
  * inside the Android app (Capacitor WebView), where it compares the bundled
  * APP_VERSION with /app/version.json on the live site and offers the new APK.
  */
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { APP_DOWNLOAD_PAGE, APP_UPDATE_URL, APP_VERSION } from "@/lib/app-version";
+import { isNativeApp } from "@/lib/native-app";
 
 function isNewer(remote: string, local: string): boolean {
   const r = remote.split(".").map((n) => parseInt(n, 10) || 0);
@@ -18,8 +20,17 @@ function isNewer(remote: string, local: string): boolean {
 }
 
 export function AppUpdateCheck() {
+  const router = useRouter();
   const [version, setVersion] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+
+  // Second half of the deep-load bounce in the root layout's inline script:
+  // land on "/", then finish the navigation client-side.
+  useEffect(() => {
+    if (!isNativeApp() || window.location.pathname !== "/") return;
+    const next = new URLSearchParams(window.location.search).get("next");
+    if (next && next.startsWith("/")) router.replace(next);
+  }, [router]);
 
   useEffect(() => {
     if (!(window as { Capacitor?: unknown }).Capacitor) return;
@@ -37,7 +48,10 @@ export function AppUpdateCheck() {
 
   if (!version || dismissed) return null;
   return (
-    <div className="fixed inset-x-3 bottom-3 z-[100] mx-auto max-w-md rounded-2xl border border-gold-400/40 bg-navy-900 p-4 text-white shadow-lifted">
+    <div
+      className="fixed inset-x-3 z-[100] mx-auto max-w-md rounded-2xl border border-gold-400/40 bg-navy-900 p-4 text-white shadow-lifted"
+      style={{ bottom: "calc(0.75rem + var(--sab, 0px))" }}
+    >
       <p className="text-sm font-semibold">Update available — v{version}</p>
       <p className="mt-0.5 text-xs text-white/70">A new version of the Lighthouse Classes app is ready.</p>
       <div className="mt-3 flex gap-2">

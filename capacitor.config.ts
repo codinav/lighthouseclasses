@@ -18,6 +18,14 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
+    // Lets the site detect the app (see src/lib/native-app.ts)
+    appendUserAgent: "LighthouseClassesApp",
+  },
+  plugins: {
+    // The site chrome is light (paper-cream); don't follow the system theme.
+    SystemBars: {
+      style: "LIGHT",
+    },
   },
 };
 

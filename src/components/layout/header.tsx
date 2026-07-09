@@ -56,7 +56,7 @@ export function Header() {
     <>
       <header
         className={cn(
-          "fixed inset-x-0 top-0 z-50 transition-all duration-300",
+          "safe-top fixed inset-x-0 top-0 z-50 transition-all duration-300",
           scrolled ? "glass shadow-soft" : "bg-transparent"
         )}
       >
@@ -160,7 +160,7 @@ export function Header() {
       {menuOpen && (
         <div className="fixed inset-0 z-[60] animate-fade-in lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
           <div className="absolute inset-0 bg-navy-950/60 backdrop-blur-sm" onClick={() => setMenuOpen(false)} />
-          <div className="absolute inset-y-0 right-0 flex w-[86%] max-w-sm flex-col bg-[var(--lh-card)] p-6 shadow-lifted">
+          <div className="safe-top safe-bottom absolute inset-y-0 right-0 flex w-[86%] max-w-sm flex-col bg-[var(--lh-card)] p-6 shadow-lifted">
             <div className="flex items-center justify-between">
               <Logo />
               <button className="btn-ghost h-10 w-10 rounded-full !p-0" onClick={() => setMenuOpen(false)} aria-label="Close menu">

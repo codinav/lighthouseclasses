@@ -32,7 +32,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       </aside>
 
       {/* Form panel */}
-      <main className="flex flex-col bg-[var(--lh-bg)] px-5 py-8 sm:px-12 sm:py-10">
+      <main className="safe-top flex flex-col bg-[var(--lh-bg)] px-5 py-8 sm:px-12 sm:py-10">
         <div className="flex items-center justify-between lg:justify-end">
           <Link href="/" className="lg:hidden">
             <Logo />

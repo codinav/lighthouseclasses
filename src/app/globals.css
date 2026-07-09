@@ -157,8 +157,25 @@
     display: none;
   }
 
+  /* Effective safe-area insets. Browsers resolve env(); the Android app's
+     WebView additionally injects --safe-area-inset-* custom properties
+     (Capacitor works around a Chromium env() bug) — take whichever is set. */
+  :root {
+    --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+    --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  }
+  .safe-top {
+    padding-top: var(--sat);
+  }
   .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
+    padding-bottom: var(--sab);
+  }
+  /* Content offset below the fixed header (4rem/6rem) plus the top inset */
+  .pt-header {
+    padding-top: calc(4rem + var(--sat));
+  }
+  .pt-header-lg {
+    padding-top: calc(6rem + var(--sat));
   }
 
   /* Scroll reveal — activated by <Reveal /> via IntersectionObserver */

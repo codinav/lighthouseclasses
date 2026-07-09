@@ -56,10 +56,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        {/* Set theme before paint to avoid flash — light by default */}
+        {/* Set theme before paint to avoid flash — light by default.
+            In the Android app, deep full-page loads always receive this root
+            document (the app's local server has no per-route fallback), which
+            would hydrate the wrong page — bounce them through "/" instead;
+            AppUpdateCheck completes the client-side navigation via ?next=. */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem('lh_theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}`,
+            __html: `try{if(localStorage.getItem('lh_theme')==='dark')document.documentElement.classList.add('dark')}catch(e){}
+if(navigator.userAgent.includes('LighthouseClassesApp')&&location.pathname!=='/'){location.replace('/?next='+encodeURIComponent(location.pathname+location.search))}`,
           }}
         />
       </head>

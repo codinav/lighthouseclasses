@@ -53,7 +53,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <>
       <Header />
-      <div className="container-lh flex gap-8 pb-28 pt-24 lg:pb-16">
+      <div className="container-lh pt-header-lg flex gap-8 pb-28 lg:pb-16">
         {/* Sidebar */}
         <aside className="hidden w-60 shrink-0 lg:block" aria-label="Dashboard navigation">
           <nav className="sticky top-24 space-y-1">

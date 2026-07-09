@@ -62,7 +62,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return (
       <>
         <Header />
-        <div className="container-lh flex min-h-[70vh] flex-col items-center justify-center pt-16 text-center">
+        <div className="container-lh flex min-h-[70vh] pt-header flex-col items-center justify-center text-center">
           <ShieldAlert className="h-14 w-14 text-rose-500" aria-hidden />
           <h1 className="mt-5 font-display text-2xl font-semibold">Admin access required</h1>
           <p className="mt-2 max-w-md text-sm muted">
@@ -78,7 +78,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <>
       <Header />
-      <div className="container-lh flex gap-8 pb-16 pt-24">
+      <div className="container-lh pt-header-lg flex gap-8 pb-16">
         <aside className="hidden w-56 shrink-0 lg:block" aria-label="Admin navigation">
           <div className="sticky top-24">
             <p className="px-4 pb-3 text-2xs font-bold uppercase tracking-[0.2em] muted">
