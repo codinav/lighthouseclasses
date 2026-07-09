@@ -33,16 +33,16 @@ mv out/_next out/assets
 LC_ALL=C find out -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" -o -name "*.txt" \) \
   -exec perl -pi -e 's{/_next/}{/assets/}g' {} +
 
-# One-time shim (2026-07-09): the server's FTP sync-state still lists the old
-# build-id folders (assets/{id} and assets/static/{id}), but they're gone from the
-# server. FTP-Deploy-Action tolerates missing *files* on delete but crashes (550)
-# removing a missing *folder*. Shipping placeholders keeps both off the deletion
-# list; the run then completes and writes a fresh sync-state. Safe to remove after
-# one green deploy.
-for GHOST in out/assets/Pl8ovB1Hmv0eA6f30_-5c out/assets/static/Pl8ovB1Hmv0eA6f30_-5c; do
-  mkdir -p "$GHOST"
-  printf 'placeholder — see build-hostinger.sh\n' > "$GHOST/keep.txt"
-done
+# FTP-Deploy records empty dirs (Next's empty assets/{buildId}) in its
+# sync-state but never creates them on the server — nothing to upload — so the
+# NEXT deploy crashes (550) removing a folder that never existed. Missing-file
+# deletes are tolerated; missing-FOLDER removes are fatal. Prevent new ghosts
+# by dropping empty dirs from the upload entirely…
+find out -type d -empty -delete
+# …and materialize the one ghost already recorded (from the 2026-07-09 runs)
+# so its pending deletion succeeds. Safe to remove after one green deploy.
+mkdir -p out/assets/oTeQnFTkqprG3YfZmCusA
+printf 'placeholder — see build-hostinger.sh\n' > out/assets/oTeQnFTkqprG3YfZmCusA/keep.txt
 
 echo "→ Adding .htaccess for Apache/LiteSpeed…"
 cat > out/.htaccess <<'HTACCESS'
