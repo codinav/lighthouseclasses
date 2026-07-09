@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Plus_Jakarta_Sans } from "next/font/google";
 import { Providers } from "@/lib/providers";
+import { AppUpdateCheck } from "@/components/app/update-check";
 import "./globals.css";
 
 const display = Fraunces({
@@ -70,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to content
         </a>
         <Providers>{children}</Providers>
+        <AppUpdateCheck />
       </body>
     </html>
   );

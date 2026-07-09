@@ -23,6 +23,7 @@ const COLUMNS = [
       { label: "Careers", href: "/careers" },
       { label: "Contact", href: "/contact" },
       { label: "Community", href: "/community" },
+      { label: "Get the App", href: "/app" },
     ],
   },
   {

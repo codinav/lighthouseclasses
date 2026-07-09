@@ -60,6 +60,7 @@ ErrorDocument 404 /404.html
 AddType application/manifest+json .webmanifest
 AddType image/svg+xml .svg
 AddType video/mp4 .mp4
+AddType application/vnd.android.package-archive .apk
 AddType video/webm .webm
 HTACCESS
 

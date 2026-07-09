@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Bell, BellOff, CalendarClock, ClipboardList, Loader2, Megaphone, Radio, Trophy } from "lucide-react";
 import { useNotifications } from "@/lib/notifications";
 import { cn } from "@/lib/utils";
@@ -76,7 +77,7 @@ export default function NotificationsPage() {
         <Bell className="h-6 w-6 text-ocean-600 dark:text-gold-400" aria-hidden />
         <p className="text-sm muted">
           Manage email, push, and reminder preferences in{" "}
-          <a href="/dashboard/settings" className="font-semibold text-ocean-600 hover:underline dark:text-gold-400">Settings</a>.
+          <Link href="/dashboard/settings" className="font-semibold text-ocean-600 hover:underline dark:text-gold-400">Settings</Link>.
         </p>
       </div>
     </div>
