@@ -49,7 +49,9 @@ for GHOST in \
   out/assets/static/Pl8ovB1Hmv0eA6f30_-5c \
   out/assets/oTeQnFTkqprG3YfZmCusA \
   out/assets/static/oTeQnFTkqprG3YfZmCusA \
-  out/assets/static/wRQh-13-_McWTp70VmAzJ; do
+  out/assets/static/wRQh-13-_McWTp70VmAzJ \
+  out/dict \
+  out/dict/chunks; do
   mkdir -p "$GHOST"
   printf 'placeholder — see build-hostinger.sh\n' > "$GHOST/keep.txt"
 done
