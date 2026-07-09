@@ -33,6 +33,14 @@ mv out/_next out/assets
 LC_ALL=C find out -type f \( -name "*.html" -o -name "*.js" -o -name "*.css" -o -name "*.txt" \) \
   -exec perl -pi -e 's{/_next/}{/assets/}g' {} +
 
+# One-time shim (2026-07-09): the server's FTP sync-state still lists this old
+# build-id folder, but the folder itself is gone from the server. FTP-Deploy-Action
+# tolerates missing *files* on delete but crashes (550) removing a missing *folder*.
+# Shipping a placeholder keeps it off the deletion list; the run then completes and
+# writes a fresh sync-state. Safe to remove after one green deploy.
+mkdir -p out/assets/Pl8ovB1Hmv0eA6f30_-5c
+printf 'placeholder — see build-hostinger.sh\n' > out/assets/Pl8ovB1Hmv0eA6f30_-5c/keep.txt
+
 echo "→ Adding .htaccess for Apache/LiteSpeed…"
 cat > out/.htaccess <<'HTACCESS'
 Options -Indexes

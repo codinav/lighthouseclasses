@@ -24,16 +24,21 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  composeCompound,
   decodePos,
   FREQ_LABELS,
   loadEntry,
   loadIndex,
   loadShers,
+  loadSubs,
   pageImageUrl,
   search as runSearch,
+  searchSubs,
+  type ComposedCompound,
   type PlattsEntry,
   type PlattsIndex,
   type PlattsRow,
+  type PlattsSubsIndex,
   type ShersFile,
 } from "./data";
 
@@ -46,6 +51,7 @@ export function PlattsClient() {
   const selected = params.get("e"); // row index
 
   const [idx, setIdx] = useState<PlattsIndex | null>(null);
+  const [subs, setSubs] = useState<PlattsSubsIndex | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -60,10 +66,23 @@ export function PlattsClient() {
     };
   }, []);
 
+  // The compound index is heavier — fetch it once the user starts searching.
+  const searching = Boolean(query.trim());
+  useEffect(() => {
+    if (!searching || subs) return;
+    let alive = true;
+    loadSubs()
+      .then((s) => alive && setSubs(s))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [searching, subs]);
+
   const openEntry = useCallback(
-    (row: number) => {
+    (row: number, highlight?: string) => {
       setQuery("");
-      router.push(`${pathname}?e=${row}`, { scroll: false });
+      router.push(`${pathname}?e=${row}${highlight ? `&hl=${encodeURIComponent(highlight)}` : ""}`, { scroll: false });
     },
     [router, pathname]
   );
@@ -75,6 +94,11 @@ export function PlattsClient() {
   useEffect(() => window.scrollTo({ top: 0 }), [selected]);
 
   const results = useMemo(() => (idx && query.trim() ? runSearch(idx, query) : []), [idx, query]);
+  const subResults = useMemo(() => (subs && query.trim() ? searchSubs(subs, query) : []), [subs, query]);
+  const compound = useMemo(
+    () => (idx && /[\s-]/.test(query.trim()) ? composeCompound(idx, query) : null),
+    [idx, query]
+  );
   const view: "home" | "results" | "entry" = query.trim() ? "results" : selected ? "entry" : "home";
 
   return (
@@ -101,10 +125,14 @@ export function PlattsClient() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && results.length) openEntry(results[0]);
+                  if (e.key === "Enter") {
+                    if (results.length) openEntry(results[0]);
+                    else if (subResults.length) openEntry(subs!.rows[subResults[0]][1], subs!.rows[subResults[0]][0]);
+                    else if (compound) openEntry(compound.parts[0]);
+                  }
                   if (e.key === "Escape") setQuery("");
                 }}
-                placeholder="Search — محبت, मोहब्बत, muhabbat, or love…"
+                placeholder="Search — محبت, मोहब्बत, dil-e-nadan, or love…"
                 className="w-full bg-transparent py-3 text-base outline-none placeholder:text-[var(--lh-ink-soft)]"
                 aria-label="Search the Platts dictionary"
                 autoComplete="off"
@@ -126,7 +154,7 @@ export function PlattsClient() {
             </div>
             <p className="mt-3 text-xs muted">
               Every script works — try{" "}
-              {["عشق", "zindagi", "प्रेम", "beauty"].map((w, i) => (
+              {["عشق", "jan-e-jigar", "प्रेम", "beauty"].map((w, i) => (
                 <span key={w}>
                   {i > 0 && ", "}
                   <button className="font-semibold text-ocean-600 hover:underline dark:text-gold-400" onClick={() => setQuery(w)}>
@@ -149,9 +177,26 @@ export function PlattsClient() {
           </div>
         )}
         {!idx && !loadError && <HomeSkeleton />}
-        {idx && view === "results" && <Results idx={idx} query={query} results={results} onOpen={openEntry} />}
+        {idx && view === "results" && (
+          <Results
+            idx={idx}
+            query={query}
+            results={results}
+            subs={subs}
+            subResults={subResults}
+            compound={compound}
+            onOpen={openEntry}
+          />
+        )}
         {idx && view === "entry" && selected && (
-          <EntryView idx={idx} row={+selected} onOpen={openEntry} onBack={goHome} onSearch={setQuery} />
+          <EntryView
+            idx={idx}
+            row={+selected}
+            highlight={params.get("hl")}
+            onOpen={openEntry}
+            onBack={goHome}
+            onSearch={setQuery}
+          />
         )}
         {idx && view === "home" && <Home idx={idx} onOpen={openEntry} onSearch={setQuery} />}
 
@@ -177,10 +222,16 @@ function SourceChip({ src }: { src: string }) {
   );
 }
 
-function ResultRow({ row, onOpen }: { row: PlattsRow; idx?: never; onOpen: () => void }) {
+function ResultRow({ row, onOpen, plain }: { row: PlattsRow; onOpen: () => void; plain?: boolean }) {
   const [u, r, d, src, brief] = row;
   return (
-    <button onClick={onOpen} className="card card-hover flex w-full items-center justify-between gap-4 px-5 py-4 text-left">
+    <button
+      onClick={onOpen}
+      className={cn(
+        "flex w-full items-center justify-between gap-4 px-5 py-4 text-left",
+        plain ? "rounded-2xl hover:bg-navy-900/5 dark:hover:bg-white/5" : "card card-hover"
+      )}
+    >
       <span className="min-w-0">
         <span className="flex flex-wrap items-baseline gap-x-2">
           <span className="text-base font-bold">{r || u}</span>
@@ -200,23 +251,125 @@ function ResultRow({ row, onOpen }: { row: PlattsRow; idx?: never; onOpen: () =>
 /* Results                                                             */
 /* ------------------------------------------------------------------ */
 
+function CompoundCard({
+  idx,
+  compound,
+  onOpen,
+}: {
+  idx: PlattsIndex;
+  compound: ComposedCompound;
+  onOpen: (row: number) => void;
+}) {
+  const [ra, rb] = compound.parts;
+  return (
+    <div className="card mb-4 overflow-hidden">
+      <div className="bg-gold-400/10 px-5 py-4 sm:px-6">
+        <p className="text-2xs font-bold uppercase tracking-widest muted">
+          {compound.joint === "e" ? "Izafat compound — composed from its parts" : "Pair — composed from its parts"}
+        </p>
+        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="text-xl font-bold">{compound.roman}</span>
+          <span dir="rtl" lang="ur" className="pb-1 font-urdu text-3xl leading-[1.9]">
+            {compound.urdu}
+          </span>
+        </div>
+        <p className="mt-1.5 text-xs muted">
+          {compound.joint === "e"
+            ? "The Persian “-e-” (izafat) links two words: the second describes or possesses the first."
+            : "The Persian “o” joins two words: “and”."}
+        </p>
+      </div>
+      <div className="space-y-px p-2">
+        {[ra, rb].map((r) => (
+          <ResultRow key={r} row={idx.rows[r]} onOpen={() => onOpen(r)} plain />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SubRow({
+  phrase,
+  brief,
+  parent,
+  onOpen,
+}: {
+  phrase: string;
+  brief: string;
+  parent: PlattsRow;
+  onOpen: () => void;
+}) {
+  return (
+    <button onClick={onOpen} className="card card-hover flex w-full items-center justify-between gap-4 px-5 py-3.5 text-left">
+      <span className="min-w-0">
+        <span className="text-base font-bold">{phrase}</span>
+        <span className="mt-0.5 block truncate text-sm muted">{brief}</span>
+      </span>
+      <span className="shrink-0 text-right">
+        <span className="block text-2xs font-bold uppercase tracking-wider muted">under</span>
+        <span dir="rtl" lang="ur" className="block pb-1 font-urdu text-xl leading-[1.9]">
+          {parent[0]}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function Results({
   idx,
   query,
   results,
+  subs,
+  subResults,
+  compound,
   onOpen,
 }: {
   idx: PlattsIndex;
   query: string;
   results: number[];
-  onOpen: (row: number) => void;
+  subs: PlattsSubsIndex | null;
+  subResults: number[];
+  compound: ComposedCompound | null;
+  onOpen: (row: number, highlight?: string) => void;
 }) {
+  const multi = /[\s-]/.test(query.trim());
+  const shownSubs = multi ? subResults : subResults.slice(0, 6);
+  const none = results.length === 0 && shownSubs.length === 0 && !compound;
+  const count = results.length + shownSubs.length;
+
+  const entriesSection = results.length > 0 && (
+    <div className="space-y-2.5">
+      {shownSubs.length > 0 && <p className="px-1 pt-2 text-2xs font-bold uppercase tracking-widest muted">Dictionary entries</p>}
+      {results.map((i) => (
+        <ResultRow key={i} row={idx.rows[i]} onOpen={() => onOpen(i)} />
+      ))}
+    </div>
+  );
+  const subsSection = shownSubs.length > 0 && subs && (
+    <div className="space-y-2.5">
+      <p className="px-1 pt-2 text-2xs font-bold uppercase tracking-widest muted">Compounds & phrases</p>
+      {shownSubs.map((i) => {
+        const [phrase, parentRow, brief] = subs.rows[i];
+        return (
+          <SubRow
+            key={i}
+            phrase={phrase}
+            brief={brief}
+            parent={idx.rows[parentRow]}
+            onOpen={() => onOpen(parentRow, phrase)}
+          />
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-3xl">
       <p className="px-1 pb-3 text-2xs font-bold uppercase tracking-widest muted">
-        {results.length ? `${results.length === 60 ? "60+" : results.length} for “${query.trim()}”` : `No matches for “${query.trim()}”`}
+        {count ? `${count >= 60 ? "60+" : count} for “${query.trim()}”` : `No matches for “${query.trim()}”`}
       </p>
-      {results.length === 0 && (
+      {compound && <CompoundCard idx={idx} compound={compound} onOpen={onOpen} />}
+      {none && (
         <div className="card p-8 text-center">
           <p className="font-semibold">Nothing found.</p>
           <p className="mx-auto mt-2 max-w-md text-sm muted">
@@ -224,10 +377,18 @@ function Results({
           </p>
         </div>
       )}
-      <div className="space-y-2.5">
-        {results.map((i) => (
-          <ResultRow key={i} row={idx.rows[i]} onOpen={() => onOpen(i)} />
-        ))}
+      <div className="space-y-6">
+        {multi ? (
+          <>
+            {subsSection}
+            {entriesSection}
+          </>
+        ) : (
+          <>
+            {entriesSection}
+            {subsSection}
+          </>
+        )}
       </div>
     </div>
   );
@@ -240,12 +401,14 @@ function Results({
 function EntryView({
   idx,
   row,
+  highlight,
   onOpen,
   onBack,
   onSearch,
 }: {
   idx: PlattsIndex;
   row: number;
+  highlight?: string | null;
   onOpen: (row: number) => void;
   onBack: () => void;
   onSearch: (q: string) => void;
@@ -268,6 +431,11 @@ function EntryView({
     const from = Math.max(0, row - 4);
     return idx.rows.slice(from, Math.min(idx.rows.length, row + 5)).map((r, i) => ({ r, pos: from + i }));
   }, [idx, row]);
+
+  // When arriving from a compound search result, scroll to that compound.
+  const hlRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 200);
+  }, []);
 
   // Derived words computed live from the index: longer words that begin with
   // this headword (e.g. محبت → محبت نامہ).
@@ -484,24 +652,44 @@ function EntryView({
         {compounds.length > 0 && (
           <Section icon={Puzzle} title="Compounds & collocations" urdu="مرکبات" delay={180}>
             <dl className="space-y-3">
-              {compounds.map(([t, d], i) => (
-                <div key={i} className="border-b pb-3 last:border-b-0 last:pb-0">
-                  <dt className="font-semibold">{t}</dt>
-                  <dd className="mt-0.5 text-sm muted">{d}</dd>
-                </div>
-              ))}
+              {compounds.map(([t, d], i) => {
+                const hit = highlight != null && t === highlight;
+                return (
+                  <div
+                    key={i}
+                    ref={hit ? hlRef : undefined}
+                    className={cn(
+                      "border-b pb-3 last:border-b-0 last:pb-0",
+                      hit && "-mx-3 rounded-xl border-b-0 bg-gold-400/15 p-3"
+                    )}
+                  >
+                    <dt className="font-semibold">{t}</dt>
+                    <dd className="mt-0.5 text-sm muted">{d}</dd>
+                  </div>
+                );
+              })}
             </dl>
           </Section>
         )}
         {idioms.length > 0 && (
           <Section icon={Quote} title="Idioms & phrases" urdu="محاورے" delay={200}>
             <dl className="space-y-3">
-              {idioms.map(([t, d], i) => (
-                <div key={i} className="border-b pb-3 last:border-b-0 last:pb-0">
-                  <dt className="font-semibold">{t}</dt>
-                  <dd className="mt-0.5 text-sm muted">{d}</dd>
-                </div>
-              ))}
+              {idioms.map(([t, d], i) => {
+                const hit = highlight != null && t === highlight;
+                return (
+                  <div
+                    key={i}
+                    ref={hit ? hlRef : undefined}
+                    className={cn(
+                      "border-b pb-3 last:border-b-0 last:pb-0",
+                      hit && "-mx-3 rounded-xl border-b-0 bg-gold-400/15 p-3"
+                    )}
+                  >
+                    <dt className="font-semibold">{t}</dt>
+                    <dd className="mt-0.5 text-sm muted">{d}</dd>
+                  </div>
+                );
+              })}
             </dl>
           </Section>
         )}

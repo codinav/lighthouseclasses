@@ -61,6 +61,15 @@ export interface PlattsEntry {
   sh?: number;
 }
 
+/** [phrase, parentRow, briefDef] — a compound/idiom listed under a headword */
+export type PlattsSubRow = [string, number, string];
+
+export interface PlattsSubsIndex {
+  rows: PlattsSubRow[];
+  /** joined strict fold + loose fold of each phrase */
+  keys: { j: string; l: string }[];
+}
+
 /** [urduLine1, urduLine2, romanLine1, romanLine2, poetIdx] */
 export type Sher = [string, string, string, string, number];
 
@@ -194,6 +203,7 @@ function looseRoman(s: string): string {
     .replace(/ch/g, "c")
     .replace(/sh/g, "s")
     .replace(/ph/g, "f")
+    .replace(/gh/g, "g")
     .replace(/z/g, "j")
     .replace(/[aeiouy]+/g, "a")
     .replace(/(.)\1+/g, "$1");
@@ -202,6 +212,14 @@ function looseRoman(s: string): string {
 /** Consonant skeleton of a loose form — the last-resort match (khwab/khawab). */
 function skeleton(loose: string): string {
   return loose.replace(/(?!^)a/g, "");
+}
+
+/**
+ * Join a folded roman phrase into one key so every way of typing a compound
+ * matches: "jān-ě-jigar", "jan e jigar", "jane jigar" → "janejigar".
+ */
+function joinKey(folded: string): string {
+  return folded.replace(/ /g, "");
 }
 
 /** Fold Devanagari for matching: drop nuktas, unify explicit nasals with anusvara. */
@@ -229,7 +247,8 @@ export function loadIndex(): Promise<PlattsIndex> {
         const keys: Keys[] = file.rows.map(([u, r, d, , g]) => {
           const rv = foldRoman(r)
             .split(/\s*[,;]\s*/)
-            .filter((x) => x && x !== "lit");
+            .filter((x) => x && x !== "lit")
+            .map(joinKey);
           if (!rv.length) rv.push("");
           const lv = rv.map(looseRoman);
           return {
@@ -249,6 +268,30 @@ export function loadIndex(): Promise<PlattsIndex> {
       });
   }
   return indexPromise;
+}
+
+let subsPromise: Promise<PlattsSubsIndex> | null = null;
+
+/** The compound/idiom search index — big, so only fetched once searching starts. */
+export function loadSubs(): Promise<PlattsSubsIndex> {
+  if (!subsPromise) {
+    subsPromise = fetch("/platts/subs.json")
+      .then((r) => {
+        if (!r.ok) throw new Error(`platts subs: HTTP ${r.status}`);
+        return r.json() as Promise<{ rows: PlattsSubRow[] }>;
+      })
+      .then((file) => {
+        const keys = file.rows.map(([t]) => {
+          const j = joinKey(foldRoman(t));
+          return { j, l: looseRoman(j) };
+        });
+        return { rows: file.rows, keys };
+      });
+    subsPromise.catch(() => {
+      subsPromise = null;
+    });
+  }
+  return subsPromise;
 }
 
 const chunkCache = new Map<number, Promise<PlattsEntry[]>>();
@@ -342,7 +385,7 @@ export function search(idx: PlattsIndex, query: string, limit = 60): number[] {
       else if (d.includes(nq)) scored.push([i, 200]);
     }
   } else {
-    const nq = chFix(foldRoman(q));
+    const nq = joinKey(chFix(foldRoman(q)));
     const lq = looseRoman(nq);
     const sq = skeleton(lq);
     const eq = q.toLowerCase();
@@ -372,6 +415,114 @@ export function search(idx: PlattsIndex, query: string, limit = 60): number[] {
     .sort((a, b) => b[1] - a[1] || rows[a[0]][1].length - rows[b[0]][1].length)
     .slice(0, limit)
     .map(([i]) => i);
+}
+
+/* ------------------------------------------------------------------ */
+/* Sub-entry (compound & idiom) search                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Search Platts' compounds & idioms ("dil-ārā", "āb o tāb", "dil ulṭā ćalā
+ * ānā" …). Matching is on the space-stripped fold so izafat and spacing
+ * don't matter. Returns positions into subs.rows.
+ */
+export function searchSubs(subs: PlattsSubsIndex, query: string, limit = 20): number[] {
+  const q = query.trim();
+  if (!q || hasUrduScript(q) || hasDevanagari(q)) return [];
+  const nq = joinKey(chFix(foldRoman(q)));
+  if (nq.length < 3) return [];
+  const lq = looseRoman(nq);
+  const { keys } = subs;
+  const scored: [number, number][] = [];
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    let s = 0;
+    if (k.j === nq) s = 1000;
+    else if (k.j.startsWith(nq)) s = 600;
+    else if (k.l === lq) s = 480 - 8 * editDist(nq, k.j);
+    else if (lq.length >= 4 && k.l.startsWith(lq)) s = 330;
+    else if (nq.length >= 5 && k.j.includes(nq)) s = 160;
+    if (s) scored.push([i, s]);
+  }
+  return scored
+    .sort((a, b) => b[1] - a[1] || subs.rows[a[0]][0].length - subs.rows[b[0]][0].length)
+    .slice(0, limit)
+    .map(([i]) => i);
+}
+
+/* ------------------------------------------------------------------ */
+/* Izafat / conjunction composition                                    */
+/* ------------------------------------------------------------------ */
+
+export interface ComposedCompound {
+  /** component row positions in the index */
+  parts: [number, number];
+  /** "e" (izafat — of / qualified by) or "o" (conjunction — and) */
+  joint: "e" | "o";
+  /** display forms built from the two headwords */
+  urdu: string;
+  roman: string;
+}
+
+/**
+ * Best row whose romanization (not gloss) matches the word; null if nothing
+ * close. Ties between homographs go to the Persian entry — this feeds izafat
+ * composition, which is a Persian construction (shām = Evening, not Syria).
+ */
+function bestHeadword(idx: PlattsIndex, word: string): number | null {
+  const nq = chFix(foldRoman(word));
+  if (nq.length < 2) return null;
+  const lq = looseRoman(nq);
+  let best = -1;
+  let bestScore = 0;
+  const { keys, rows } = idx;
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    let s = 0;
+    if (k.rv[0] === nq) s = 1000;
+    else if (k.rv.includes(nq)) s = 930;
+    else if (k.lv.includes(lq)) s = 480 - 8 * effDist(nq, k.rv);
+    if (!s) continue;
+    let wins = s > bestScore;
+    if (s === bestScore) {
+      const persianCand = rows[i][3] === "Persian" ? 1 : 0;
+      const persianBest = rows[best][3] === "Persian" ? 1 : 0;
+      wins = persianCand !== persianBest ? persianCand > persianBest : rows[i][1].length < rows[best][1].length;
+    }
+    if (wins) {
+      best = i;
+      bestScore = s;
+    }
+  }
+  return bestScore >= 400 ? best : null;
+}
+
+/**
+ * Read a two-part Persian construction out of the query — "jān-e-jigar",
+ * "dil e nadan", "dile nadan", "shab o roz" — and compose a result from the
+ * two component entries, Rekhta-style, even when the compound itself isn't
+ * a dictionary headword.
+ */
+export function composeCompound(idx: PlattsIndex, query: string): ComposedCompound | null {
+  const q = query.trim().toLowerCase();
+  if (hasUrduScript(q) || hasDevanagari(q)) return null;
+  const tokens = q.split(/[\s-]+/).filter(Boolean);
+  let a = "";
+  let b = "";
+  let joint: "e" | "o" | null = null;
+  if (tokens.length === 3 && /^[eiě]$/.test(tokens[1])) [a, , b] = tokens, (joint = "e");
+  else if (tokens.length === 3 && /^(o|wa|aur)$/.test(tokens[1])) [a, , b] = tokens, (joint = "o");
+  else if (tokens.length === 2 && tokens[0].length >= 4 && /[^aeiou]e$/.test(tokens[0]))
+    (a = tokens[0].slice(0, -1)), (b = tokens[1]), (joint = "e");
+  if (!joint || a.length < 2 || b.length < 2) return null;
+  const ra = bestHeadword(idx, a);
+  const rb = bestHeadword(idx, b);
+  if (ra === null || rb === null) return null;
+  const [ua, rra] = idx.rows[ra];
+  const [ub, rrb] = idx.rows[rb];
+  const roman = `${rra.split(/\s*,\s*/)[0]}${joint === "e" ? "-e-" : " o "}${rrb.split(/\s*,\s*/)[0]}`;
+  const urdu = joint === "e" ? `${ua}ِ ${ub}` : `${ua} و ${ub}`;
+  return { parts: [ra, rb], joint, urdu, roman };
 }
 
 /* ------------------------------------------------------------------ */

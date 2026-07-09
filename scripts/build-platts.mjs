@@ -442,6 +442,18 @@ if (shers.length) {
   console.log(`shers.json: ${shers.length} couplets (${((await stat(join(OUT, "shers.json"))).size / 1024).toFixed(0)} KB)`);
 }
 
+// searchable sub-entry index: [phrase, parentRow, briefDef] — lets multi-word
+// compounds & idioms (dil-ārā, āb o tāb, afsar-i-aʻlā …) show up in search
+const subRows = [];
+entries.forEach((e, i) => {
+  for (const s of e.subs ?? []) {
+    const brief = s[1].length > 66 ? s[1].slice(0, 64) + "…" : s[1];
+    subRows.push([s[0], i, brief]);
+  }
+});
+await writeFile(join(OUT, "subs.json"), JSON.stringify({ v: 1, count: subRows.length, rows: subRows }));
+console.log(`subs.json: ${subRows.length} sub-entries (${((await stat(join(OUT, "subs.json"))).size / 1024).toFixed(0)} KB)`);
+
 const idxKb = ((await stat(join(OUT, "index.json"))).size / 1024).toFixed(0);
 const withDev = entries.filter((e) => e.d).length;
 const withEty = entries.filter((e) => e.ety).length;
