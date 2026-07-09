@@ -14,8 +14,7 @@ import type { Course } from "@/lib/types";
 const NAV = [
   { href: "/courses", label: "Courses" },
   { href: "/live", label: "Live" },
-  { href: "/dictionary", label: "Dictionary" },
-  { href: "/platts", label: "Platts" },
+  { href: "/platts", label: "Platts Dictionary" },
   { href: "/teachers", label: "Teachers" },
   { href: "/pricing", label: "Pricing" },
   { href: "/community", label: "Community" },

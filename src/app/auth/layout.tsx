@@ -20,7 +20,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
             poetry. Your streak, your pace, your path, guided all the way.
           </p>
           <ul className="mt-10 space-y-3 text-sm text-white/70">
-            {["Live classes with real teachers", "Free starter lessons in every course", "Two free dictionaries — Urdu lughat & Platts (1884)"].map((line) => (
+            {["Live classes with real teachers", "Free starter lessons in every course", "The classic Platts dictionary (1884) — free & offline-ready"].map((line) => (
               <li key={line} className="flex items-start gap-3">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-400" aria-hidden />
                 {line}

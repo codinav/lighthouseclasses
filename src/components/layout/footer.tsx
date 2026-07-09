@@ -8,7 +8,6 @@ const COLUMNS = [
     links: [
       { label: "All Courses", href: "/courses" },
       { label: "Live Classes", href: "/live" },
-      { label: "Urdu Dictionary", href: "/dictionary" },
       { label: "Platts Dictionary", href: "/platts" },
       { label: "Teachers", href: "/teachers" },
       { label: "Pricing", href: "/pricing" },

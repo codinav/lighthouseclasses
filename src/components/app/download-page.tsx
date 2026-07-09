@@ -111,8 +111,8 @@ export function AppDownloadClient() {
             className="mx-auto mt-3 max-w-xl text-sm muted sm:text-base animate-fade-up"
             style={{ animationDelay: "120ms" }}
           >
-            Courses, live classes, community and both dictionaries — including full offline access to the Platts and
-            Urdu dictionaries.
+            Courses, live classes, community and the complete Platts dictionary — with full offline access in the
+            app.
           </p>
         </div>
 
@@ -133,7 +133,7 @@ export function AppDownloadClient() {
 
         <div className="mx-auto mt-10 grid max-w-4xl gap-4 sm:grid-cols-3">
           {[
-            { icon: WifiOff, title: "Dictionaries offline", body: "Platts (1884) and the Urdu dictionary work without internet." },
+            { icon: WifiOff, title: "Dictionary offline", body: "The complete Platts dictionary (1884) works without internet." },
             { icon: ShieldCheck, title: "Safe & signed", body: "Downloaded straight from lighthouseclasses.com and cryptographically signed by us." },
             { icon: Download, title: "Free updates", body: "The app checks for new versions and offers them automatically." },
           ].map((c) => (
