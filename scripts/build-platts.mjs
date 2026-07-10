@@ -404,6 +404,83 @@ for (const e of entries) {
   console.log(`  cross-reference stubs resolved: ${resolved}`);
 }
 
+/* ---- merge Fallon (1879) & Shakespear (1834) -------------------------- */
+// Two more public-domain DSAL dictionaries (harvested by harvest-dsal.mjs)
+// widen coverage far beyond Platts. Same-word entries attach their meaning
+// to the Platts entry as an extra section (e.more); new words become full
+// entries of their own (bk marks the book: F / S).
+async function loadDsalEntries(dict, bk) {
+  const dir = join(ROOT, "scripts", ".cache", dict);
+  const files = (await readdir(dir).catch(() => [])).filter((f) => /^page-\d+\.html$/.test(f));
+  files.sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
+  const out = [];
+  for (const f of files) {
+    const page = +f.match(/\d+/)[0];
+    const html = await readFile(join(dir, f), "utf8");
+    for (const block of html.split("<hw>").slice(1)) {
+      const hwEnd = block.indexOf("</hw>");
+      if (hwEnd < 0) continue;
+      const hw = block.slice(0, hwEnd);
+      const u = decode((hw.match(/<pa>([^<]*)<\/pa>/) || [])[1] || "").trim();
+      const r = decode((hw.match(/<i>([\s\S]*?)<\/i>/) || [])[1] || "")
+        .replace(/[,;]\s*$/, "")
+        .trim();
+      // corrupt headwords (digitisation left "?" for unreadable glyphs)
+      if (!u || /[?؟a-zA-Z]/.test(u)) continue;
+      let def = block
+        .slice(hwEnd + 5)
+        .split(/<\/div>/)[0]
+        .replace(/<pa>([^<]*)<\/pa>/g, "$1")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .replace(/^[\s,;.]+/, "")
+        .trim();
+      def = decode(def);
+      if (!def || def.length < 3 || !r) continue;
+      out.push({ u, r, d: "", src: "", ety: "", pos: "", def, pg: page, bk });
+    }
+  }
+  return out;
+}
+{
+  // Key on Urdu skeleton + first roman token so homographs land on the right
+  // sense (dil=heart and dal=leaf both spell دل — keep them apart). Fall back
+  // to the Urdu-only key when no romanization matches.
+  const rkey = (r) => foldRoman((r || "").split(",")[0]).replace(/\s+/g, "");
+  const byBoth = new Map();
+  const byUrdu = new Map();
+  for (const e of entries) {
+    const uk = stripUrdu(e.u);
+    if (!uk) continue;
+    const bk = uk + "|" + rkey(e.r);
+    if (!byBoth.has(bk)) byBoth.set(bk, e);
+    if (!byUrdu.has(uk)) byUrdu.set(uk, e);
+  }
+  for (const [dict, bk, label] of [
+    ["fallon", "F", "Fallon"],
+    ["shakespear", "S", "Shakespear"],
+  ]) {
+    const src = await loadDsalEntries(dict, bk);
+    let merged = 0;
+    let added = 0;
+    for (const e of src) {
+      e.u = modernizeUrdu(e.u, e.r);
+      const uk = stripUrdu(e.u);
+      const host = byBoth.get(uk + "|" + rkey(e.r)) || byUrdu.get(uk);
+      if (host) {
+        (host.more = host.more || []).push([label, e.def.length > 900 ? e.def.slice(0, 900) + "…" : e.def]);
+        merged++;
+      } else {
+        entries.push(e);
+        byBoth.set(uk + "|" + rkey(e.r), e);
+        byUrdu.set(uk, e);
+        added++;
+      }
+    }
+    console.log(`  ${dict}: ${src.length} entries parsed — ${merged} merged into existing words, ${added} new words`);
+  }
+}
+
 /* ---- derive Devanagari where missing --------------------------------- */
 // ~15k (mostly Perso-Arabic) entries have no Devanagari headword. The Platts
 // romanization is explicit enough to transliterate deterministically —

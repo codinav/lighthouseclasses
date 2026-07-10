@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  BOOKS,
   composeCompound,
   decodePos,
   FREQ_LABELS,
@@ -201,7 +202,7 @@ export function PlattsClient() {
         {idx && view === "home" && <Home idx={idx} onOpen={openEntry} onSearch={setQuery} />}
 
         <p className="mt-16 text-center text-xs muted">
-          From <span className="font-medium">John T. Platts, A Dictionary of Urdu, Classical Hindi and English</span> (1884, public domain).
+          From <span className="font-medium">Platts (1884), Fallon (1879) &amp; Shakespear (1834)</span> — all public domain.
           {idx ? ` ${idx.count.toLocaleString()} entries.` : ""} Digitisation: Digital Dictionaries of South Asia, Univ. of Chicago.
         </p>
       </section>
@@ -580,6 +581,13 @@ function EntryView({
           )}
         </Section>
 
+        {/* ------------- Meanings from the other dictionaries ---------- */}
+        {(entry.more ?? []).map(([book, def], i) => (
+          <Section key={book + i} icon={BookMarked} title={`Also in ${book} (${BOOKS[book[0]]?.year ?? ""})`} delay={80}>
+            <p className="whitespace-pre-line text-base leading-relaxed">{def}</p>
+          </Section>
+        ))}
+
         {/* --------------------------- Sher ---------------------------- */}
         {typeof entry.sh === "number" && <SherCard id={entry.sh} word={entry.u} />}
 
@@ -749,9 +757,11 @@ function EntryView({
           </Section>
         )}
 
-        <p className="mt-4 px-2 text-xs muted">Platts (1884), p. {entry.pg}</p>
+        <p className="mt-4 px-2 text-xs muted">
+          {BOOKS[entry.bk ?? "P"].label} ({BOOKS[entry.bk ?? "P"].year}), p. {entry.pg}
+        </p>
 
-        <PageScan page={entry.pg} />
+        <PageScan page={entry.pg} bk={entry.bk} />
       </div>
 
       <aside className="lg:pt-11">
@@ -849,8 +859,8 @@ function SherCard({ id, word }: { id: number; word: string }) {
 /* Scanned printed page                                                */
 /* ------------------------------------------------------------------ */
 
-function PageScan({ page }: { page: number }) {
-  const src = pageImageUrl(page);
+function PageScan({ page, bk }: { page: number; bk?: string }) {
+  const src = pageImageUrl(page, bk);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   useEffect(() => setState("loading"), [src]);
 
@@ -858,7 +868,7 @@ function PageScan({ page }: { page: number }) {
     <div className="card mt-4 animate-fade-up overflow-hidden" style={{ animationDelay: "200ms" }}>
       <div className="flex items-center justify-between gap-3 border-b p-5">
         <span className="eyebrow">
-          <ScrollText className="h-3.5 w-3.5" aria-hidden /> Printed page · 1884
+          <ScrollText className="h-3.5 w-3.5" aria-hidden /> Printed page · {BOOKS[bk ?? "P"].year}
         </span>
         <span className="text-xs muted">page {page}</span>
       </div>

@@ -59,6 +59,10 @@ export interface PlattsEntry {
   att?: string;
   /** id of a classical sher (couplet) containing this word — see loadShers() */
   sh?: number;
+  /** meanings merged from the other dictionaries: [bookLabel, definition][] */
+  more?: [string, string][];
+  /** source book when not Platts: F = Fallon 1879, S = Shakespear 1834 */
+  bk?: "F" | "S";
 }
 
 /** [phrase, parentRow, briefDef] — a compound/idiom listed under a headword */
@@ -552,8 +556,16 @@ export function composeCompound(idx: PlattsIndex, query: string): ComposedCompou
 /* Scanned printed page                                                */
 /* ------------------------------------------------------------------ */
 
-/** The original 1884 page scan for a printed page (filenames are 4-digit padded). */
-export function pageImageUrl(printedPage: number): string {
+/** Book metadata: label, year, DSAL slug. */
+export const BOOKS: Record<string, { label: string; year: number; slug: string }> = {
+  P: { label: "Platts", year: 1884, slug: "platts" },
+  F: { label: "Fallon", year: 1879, slug: "fallon" },
+  S: { label: "Shakespear", year: 1834, slug: "shakespear" },
+};
+
+/** The original page scan for a printed page (filenames are 4-digit padded). */
+export function pageImageUrl(printedPage: number, bk?: string): string {
   const n = String(printedPage).padStart(4, "0");
-  return `https://dsal.uchicago.edu/dictionaries/platts/page_images/${n}.jpg`;
+  const slug = BOOKS[bk ?? "P"]?.slug ?? "platts";
+  return `https://dsal.uchicago.edu/dictionaries/${slug}/page_images/${n}.jpg`;
 }
