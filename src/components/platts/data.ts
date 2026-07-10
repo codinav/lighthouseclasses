@@ -7,8 +7,8 @@
  * Node build and the static export alike.
  */
 
-/** [urdu, roman, devanagari, source, briefDef, chunk] */
-export type PlattsRow = [string, string, string, string, string, number];
+/** [urdu, roman, devanagari, source, briefDef, chunk, freqBucket?] */
+export type PlattsRow = [string, string, string, string, string, number, number?];
 
 export interface PlattsEntry {
   /** urdu (perso-arabic) headword */
@@ -178,6 +178,9 @@ export function foldRoman(s: string): string {
     .normalize("NFD")
     .replace(/[̀-͢]/g, "")
     .replace(/[ʻʼʿʾ'’‘`_.·-]/g, "")
+    .replace(/aa/g, "a") // paani/kaan → the long vowels Platts writes ā/ī/ū
+    .replace(/ee/g, "i")
+    .replace(/oo/g, "u")
     .replace(/x/g, "kh")
     .replace(/v/g, "w")
     .replace(/q/g, "k")
@@ -250,6 +253,16 @@ export function loadIndex(): Promise<PlattsIndex> {
             .filter((x) => x && x !== "lit")
             .map(joinKey);
           if (!rv.length) rv.push("");
+          // The retroflex flap ṛ is commonly typed as "d" (khidki → khiṛkī,
+          // ladka → laṛkā) — give such words an extra d-spelled variant.
+          if (/ṛ/.test(r)) {
+            for (const v of foldRoman(r.replace(/ṛh?/g, "d"))
+              .split(/\s*[,;]\s*/)
+              .filter((x) => x && x !== "lit")
+              .map(joinKey)) {
+              if (!rv.includes(v)) rv.push(v);
+            }
+          }
           const lv = rv.map(looseRoman);
           return {
             u: stripUrdu(u),
@@ -411,8 +424,18 @@ export function search(idx: PlattsIndex, query: string, limit = 60): number[] {
     }
   }
 
+  // Ties (homographs, spelling twins) go to: the more frequent word, then
+  // the entry with a real definition over a cross-reference stub, then the
+  // simpler romanization.
+  const stubbish = (i: number) => (/^(=|see s\.?v\.|i\.q\.|corr\. of)/i.test(rows[i][4]) ? 1 : 0);
   return scored
-    .sort((a, b) => b[1] - a[1] || rows[a[0]][1].length - rows[b[0]][1].length)
+    .sort(
+      (a, b) =>
+        b[1] - a[1] ||
+        (rows[b[0]][6] ?? 0) - (rows[a[0]][6] ?? 0) ||
+        stubbish(a[0]) - stubbish(b[0]) ||
+        rows[a[0]][1].length - rows[b[0]][1].length
+    )
     .slice(0, limit)
     .map(([i]) => i);
 }

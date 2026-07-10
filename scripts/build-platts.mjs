@@ -338,6 +338,163 @@ entries = entries.filter((e) => {
 });
 console.log(`${entries.length} entries parsed`);
 
+/* ---- orthographic modernization ------------------------------------- */
+// The DSAL digitisation writes Urdu with Arabic/Sindhi-era codepoints:
+// ي ك for ی ک, ٿ ڐ ڙ for the retroflexes ٹ ڈ ڑ, and a single ه for BOTH
+// modern he's. Users read and type modern Urdu (کھوتا, not کهوتا), so fix
+// the headwords at build time. The two he's are disambiguated with the
+// roman transliteration: an aspirate digraph (kh, gh, ćh → "ch", ṭh → "th"
+// …) after the preceding consonant means do-chashmi ھ, otherwise gol ہ.
+const HE_BASE = { "ب": "b", "پ": "p", "ت": "t", "ٹ": "t", "ج": "j", "چ": "c", "د": "d", "ڈ": "d", "ڑ": "r", "ک": "k", "گ": "g" };
+function modernizeUrdu(u, roman) {
+  const s = u
+    .normalize("NFC")
+    .replace(/[يى]/g, "ی")
+    .replace(/ك/g, "ک")
+    .replace(/ٿ/g, "ٹ")
+    .replace(/ڐ/g, "ڈ")
+    .replace(/ڙ/g, "ڑ");
+  const rl = (roman || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  let out = "";
+  for (const ch of s) {
+    if (ch !== "ه") {
+      out += ch;
+      continue;
+    }
+    const base = HE_BASE[out[out.length - 1]];
+    out += base && rl.includes(base + "h") ? "ھ" : "ہ";
+  }
+  return out;
+}
+for (const e of entries) {
+  if (e.u) e.u = modernizeUrdu(e.u, e.r);
+}
+
+/* ---- resolve cross-reference stubs ----------------------------------- */
+// Thousands of Platts entries carry no meaning of their own — just
+// "= khoṅtā, q.v." or "See s.v. gul." Inline the referenced entry's
+// definition so every word shows a real meaning.
+{
+  const byRoman = new Map();
+  for (const e of entries) {
+    const key = foldRoman((e.r || "").split(",")[0]);
+    if (key && !byRoman.has(key)) byRoman.set(key, e);
+  }
+  // the referenced word may be preceded by its Urdu/Devanagari spelling —
+  // skip non-Latin tokens and capture the roman one
+  const STUB_RE = /(?:^|[\s(])(?:=|i\.?q\.|corr\. of|[Ss]ee s\.v\.)\s*(?:[^\sa-zA-Z,;.]+\s+)*([a-zA-ZÀ-ɏḀ-ỿ’ʻʼ-]+)/;
+  const isStub = (def) => def.length < 70 && /q\.?v\.|[Ss]ee s\.v\./.test(def);
+  let resolved = 0;
+  for (const e of entries) {
+    if (!isStub(e.def)) continue;
+    let target = null;
+    const m = e.def.match(STUB_RE);
+    if (m) target = byRoman.get(foldRoman(m[1]));
+    // follow one more hop if the target is itself a stub
+    if (target && isStub(target.def)) {
+      const m2 = target.def.match(STUB_RE);
+      const t2 = m2 && byRoman.get(foldRoman(m2[1]));
+      if (t2 && !isStub(t2.def)) target = t2;
+    }
+    if (target && target !== e && !isStub(target.def)) {
+      e.def = `${e.def} ${target.def}`;
+      resolved++;
+    }
+  }
+  console.log(`  cross-reference stubs resolved: ${resolved}`);
+}
+
+/* ---- derive Devanagari where missing --------------------------------- */
+// ~15k (mostly Perso-Arabic) entries have no Devanagari headword. The Platts
+// romanization is explicit enough to transliterate deterministically —
+// validated at ~80% exact against the 29k Hindi entries that carry both
+// (misses are mostly conjunct-spelling variants, still readable).
+function romanToDeva(roman) {
+  let s = roman
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/ḵẖ|k͟h/g, "\x01")
+    .replace(/g̠|ġ/g, "\x02")
+    .replace(/ẉ/g, "w")
+    .replace(/ḥ/g, "h")
+    .replace(/ʺ|ʹ/g, "")
+    .normalize("NFC")
+    .replace(/t̤/g, "t")
+    .replace(/s̤|s̱/g, "s")
+    .replace(/z̤|ẕ|ḏ/g, "z")
+    .replace(/ṡ/g, "s")
+    .replace(/ṉ/g, "n")
+    .replace(/[ʻʼ’‘.]/g, "")
+    .trim();
+  if (!s || /[^a-zāīūṭḍṛṅṁñńśṣćěǒ\x01\x02 -]/.test(s)) return "";
+  const C = {
+    kh: "ख", gh: "घ", "ćh": "छ", jh: "झ", "ṭh": "ठ", "ḍh": "ढ", th: "थ", dh: "ध", ph: "फ", bh: "भ", "ṛh": "ढ़",
+    sh: "श", "ś": "श", "ṣ": "ष", "ć": "च", "ṭ": "ट", "ḍ": "ड", "ṛ": "ड़", "ṇ": "ण",
+    q: "क़", z: "ज़", "ź": "ज़", "ẓ": "ज़", "ż": "ज़", f: "फ़", "\x01": "ख़", "\x02": "ग़",
+    k: "क", g: "ग", j: "ज", t: "त", d: "द", n: "न", p: "प", b: "ब", m: "म",
+    y: "य", r: "र", l: "ल", v: "व", w: "व", s: "स", h: "ह", c: "च",
+  };
+  const V_INIT = { a: "अ", "ā": "आ", i: "इ", "ī": "ई", u: "उ", "ū": "ऊ", e: "ए", ai: "ऐ", o: "ओ", au: "औ", "ě": "ए", "ǒ": "ओ" };
+  const V_SIGN = { a: "", "ā": "ा", i: "ि", "ī": "ी", u: "ु", "ū": "ू", e: "े", ai: "ै", o: "ो", au: "ौ", "ě": "े", "ǒ": "ो" };
+  const CONS_KEYS = Object.keys(C).sort((a, b) => b.length - a.length);
+  const VOW_KEYS = Object.keys(V_INIT).sort((a, b) => b.length - a.length);
+  const vowelAt = (str, i) => VOW_KEYS.some((k) => str.startsWith(k, i));
+  let out = "";
+  let i = 0;
+  let prevCons = false;
+  while (i < s.length) {
+    const ch = s[i];
+    if (ch === " " || ch === "-") {
+      out += " ";
+      prevCons = false;
+      i++;
+      continue;
+    }
+    if (/[ṅṁñń]/.test(ch)) {
+      out += "ं";
+      prevCons = false;
+      i++;
+      continue;
+    }
+    const v = VOW_KEYS.find((k) => s.startsWith(k, i));
+    if (v) {
+      out += prevCons ? V_SIGN[v] : V_INIT[v];
+      prevCons = false;
+      i += v.length;
+      continue;
+    }
+    const c = CONS_KEYS.find((k) => s.startsWith(k, i));
+    if (!c) return "";
+    const next = i + c.length;
+    // n/m directly before a stop → anusvara (bandar → बंदर), but not
+    // before liquids/glides (anwar → अनवर)
+    if ((c === "n" || c === "m") && next < s.length && !vowelAt(s, next) && !/[yrlwvhn m-]/.test(s[next])) {
+      out += "ं";
+      prevCons = false;
+      i = next;
+      continue;
+    }
+    if (prevCons && (c === "r" || c === "y")) out += "्";
+    out += C[c];
+    prevCons = true;
+    i = next;
+  }
+  return out.normalize("NFC");
+}
+{
+  let derived = 0;
+  for (const e of entries) {
+    if (!e.d && e.r) {
+      const t = romanToDeva(e.r.split(",")[0]);
+      if (t) {
+        e.d = t;
+        derived++;
+      }
+    }
+  }
+  console.log(`  devanagari derived for ${derived} entries`);
+}
+
 /* ---- enrichment pass ------------------------------------------------ */
 console.log("Enriching …");
 const wikt = await loadWikt();
@@ -345,9 +502,12 @@ const { shers, poets, tokenIndex } = await buildShers();
 console.log(`  sher corpus: ${shers.length} couplets from ${poets.length} poets`);
 
 // in-corpus frequency: how often each folded roman token appears across defs
+// Diacritic-SENSITIVE token counts: pānī (water) and pāṇi (hand) must not
+// pool their frequencies — search ranking breaks ties with these buckets.
+const exactTok = (s) => s.normalize("NFC").toLowerCase();
 const tokenCount = new Map();
 for (const e of entries)
-  for (const t of foldRoman(e.def).split(/[^a-z]+/))
+  for (const t of exactTok(e.def).split(/[^a-zāīūṭḍṛṅṁñńśṣćḥěǒ̤̠̱̄]+/u))
     if (t.length >= 3) tokenCount.set(t, (tokenCount.get(t) ?? 0) + 1);
 
 let stats = { subs: 0, idioms: 0, syn: 0, wikt: 0, root: 0, chain: 0 };
@@ -370,8 +530,8 @@ for (const e of entries) {
   const chain = extractChain(e.ety);
   if (chain.length) (e.chain = chain), stats.chain++;
   // frequency bucket from in-corpus occurrences of the first roman token
-  const tok = foldRoman((e.r || "").split(",")[0]).split(/[^a-z]+/).filter((t) => t.length >= 3)[0];
-  const c = tok ? tokenCount.get(tok) ?? 0 : 0;
+  const tok = exactTok((e.r || "").split(",")[0].trim()).split(/[\s(]/)[0];
+  const c = tok && tok.length >= 3 ? tokenCount.get(tok) ?? 0 : 0;
   e.fq = c >= 40 ? 3 : c >= 12 ? 2 : c >= 4 ? 1 : 0;
 
   // one relevant sher: the couplet containing this headword as an exact token
@@ -414,7 +574,7 @@ const rows = entries.map((e, i) => {
   // strip a redundant leading POS from the brief (kept as its own field on the entry)
   const d = e.pos && e.def.startsWith(e.pos) ? e.def.slice(e.pos.length).replace(/^[,.\s]+/, "") : e.def;
   const brief = d.length > 66 ? d.slice(0, 64) + "…" : d;
-  return [e.u, e.r, e.d, e.src, brief, Math.floor(i / CHUNK_SIZE)];
+  return [e.u, e.r, e.d, e.src, brief, Math.floor(i / CHUNK_SIZE), e.fq ?? 0];
 });
 
 await rm(OUT, { recursive: true, force: true });
