@@ -61,8 +61,8 @@ export interface PlattsEntry {
   sh?: number;
   /** meanings merged from the other dictionaries: [bookLabel, definition][] */
   more?: [string, string][];
-  /** source book when not Platts: F = Fallon 1879, S = Shakespear 1834 */
-  bk?: "F" | "S";
+  /** source when not Platts: F = Fallon 1879, S = Shakespear 1834, W = Wiktionary */
+  bk?: "F" | "S" | "W";
 }
 
 /** [phrase, parentRow, briefDef] — a compound/idiom listed under a headword */
@@ -70,8 +70,8 @@ export type PlattsSubRow = [string, number, string];
 
 export interface PlattsSubsIndex {
   rows: PlattsSubRow[];
-  /** joined strict fold + loose fold of each phrase */
-  keys: { j: string; l: string }[];
+  /** joined strict fold + loose fold + skeleton of each phrase */
+  keys: { j: string; l: string; s: string }[];
 }
 
 /** [urduLine1, urduLine2, romanLine1, romanLine2, poetIdx] */
@@ -207,6 +207,7 @@ function chFix(s: string): string {
  */
 function looseRoman(s: string): string {
   return s
+    .replace(/n(?=[bp])/g, "m") // nasal assimilation: janb → jamb
     .replace(/ch/g, "c")
     .replace(/sh/g, "s")
     .replace(/ph/g, "f")
@@ -218,7 +219,8 @@ function looseRoman(s: string): string {
 
 /** Consonant skeleton of a loose form — the last-resort match (khwab/khawab). */
 function skeleton(loose: string): string {
-  return loose.replace(/(?!^)a/g, "");
+  // nasal assimilation resurfaces once vowels go: jānib-dār/jamba-dār → jmbdr
+  return loose.replace(/(?!^)a/g, "").replace(/n(?=[bp])/g, "m");
 }
 
 /**
@@ -300,7 +302,8 @@ export function loadSubs(): Promise<PlattsSubsIndex> {
       .then((file) => {
         const keys = file.rows.map(([t]) => {
           const j = joinKey(foldRoman(t));
-          return { j, l: looseRoman(j) };
+          const l = looseRoman(j);
+          return { j, l, s: skeleton(l) };
         });
         return { rows: file.rows, keys };
       });
@@ -459,6 +462,7 @@ export function searchSubs(subs: PlattsSubsIndex, query: string, limit = 20): nu
   const nq = joinKey(chFix(foldRoman(q)));
   if (nq.length < 3) return [];
   const lq = looseRoman(nq);
+  const sq = skeleton(lq);
   const { keys } = subs;
   const scored: [number, number][] = [];
   for (let i = 0; i < keys.length; i++) {
@@ -468,6 +472,7 @@ export function searchSubs(subs: PlattsSubsIndex, query: string, limit = 20): nu
     else if (k.j.startsWith(nq)) s = 600;
     else if (k.l === lq) s = 480 - 8 * editDist(nq, k.j);
     else if (lq.length >= 4 && k.l.startsWith(lq)) s = 330;
+    else if (sq.length >= 4 && k.s === sq) s = 250;
     else if (nq.length >= 5 && k.j.includes(nq)) s = 160;
     if (s) scored.push([i, s]);
   }
@@ -553,14 +558,106 @@ export function composeCompound(idx: PlattsIndex, query: string): ComposedCompou
 }
 
 /* ------------------------------------------------------------------ */
+/* Suffix composition — jamba-dār, dhoke-bāz, gharwālā …               */
+/* ------------------------------------------------------------------ */
+
+/** Productive Perso-Urdu suffixes, longest-match first. */
+const SUFFIXES: [string, string, string][] = [
+  // [joined roman, urdu, gloss]
+  ["darana", "دارانہ", "in the manner of one who holds or has"],
+  ["dari", "داری", "the role, duty or practice of holding"],
+  ["dar", "دار", "holder, possessor — one who has"],
+  ["bazi", "بازی", "the practice or game of"],
+  ["baz", "باز", "player of; one given to"],
+  ["sazi", "سازی", "the craft of making"],
+  ["saz", "ساز", "maker of"],
+  ["gari", "گری", "the craft or trade of"],
+  ["garh", "گڑھ", "fort, stronghold of"],
+  ["gar", "گر", "doer, maker"],
+  ["mandi", "مندی", "the state of possessing"],
+  ["mand", "مند", "possessing, full of"],
+  ["gah", "گاہ", "place of"],
+  ["khana", "خانہ", "house of"],
+  ["khor", "خور", "eater, consumer of"],
+  ["wala", "والا", "the one of / with"],
+  ["wali", "والی", "the one (fem.) of / with"],
+  ["posh", "پوش", "covered with, clad in"],
+  ["nashin", "نشین", "sitting or dwelling in"],
+  ["parast", "پرست", "worshipper, devotee of"],
+  ["shanas", "شناس", "knower, discerner of"],
+  ["nawis", "نویس", "writer of"],
+  ["ana", "انہ", "in the manner of; -like"],
+];
+
+export interface ComposedSuffix {
+  /** row of the base word */
+  base: number;
+  suffix: { roman: string; urdu: string; gloss: string };
+  roman: string;
+  urdu: string;
+}
+
+/** Base-word lookup for suffix splits — accepts skeleton-level matches too. */
+function baseHeadword(idx: PlattsIndex, word: string): number | null {
+  const direct = bestHeadword(idx, word);
+  if (direct !== null) return direct;
+  const nq = chFix(foldRoman(word));
+  if (nq.length < 3) return null;
+  const sq = skeleton(looseRoman(nq));
+  if (sq.length < 2) return null;
+  let best = -1;
+  let bestFq = -1;
+  const { keys, rows } = idx;
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].sv.includes(sq)) {
+      const fq = rows[i][6] ?? 0;
+      if (fq > bestFq) {
+        best = i;
+        bestFq = fq;
+      }
+    }
+  }
+  return best >= 0 ? best : null;
+}
+
+/**
+ * Read "base + productive suffix" out of a query (jamba-dar, samajhdar,
+ * gharwala) and compose a result from the base entry plus the suffix's
+ * standard sense — Rekhta lists thousands of these derivatives.
+ */
+export function composeSuffix(idx: PlattsIndex, query: string): ComposedSuffix | null {
+  const q = query.trim().toLowerCase();
+  if (hasUrduScript(q) || hasDevanagari(q)) return null;
+  const nq = joinKey(chFix(foldRoman(q)));
+  if (nq.length < 6) return null;
+  for (const [suf, urdu, gloss] of SUFFIXES) {
+    if (!nq.endsWith(suf)) continue;
+    let stem = nq.slice(0, -suf.length);
+    if (stem.length < 3) continue;
+    // drop a linking vowel left at the joint (jamba-dar → jamba)
+    const base = baseHeadword(idx, stem) ?? (/[aei]$/.test(stem) ? baseHeadword(idx, stem.slice(0, -1)) : null);
+    if (base === null) continue;
+    const [ub, rb] = idx.rows[base];
+    return {
+      base,
+      suffix: { roman: suf, urdu, gloss },
+      roman: `${rb.split(/\s*,\s*/)[0]}-${suf}`,
+      urdu: `${ub} ${urdu}`,
+    };
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
 /* Scanned printed page                                                */
 /* ------------------------------------------------------------------ */
 
 /** Book metadata: label, year, DSAL slug. */
-export const BOOKS: Record<string, { label: string; year: number; slug: string }> = {
+export const BOOKS: Record<string, { label: string; year: number | null; slug: string }> = {
   P: { label: "Platts", year: 1884, slug: "platts" },
   F: { label: "Fallon", year: 1879, slug: "fallon" },
   S: { label: "Shakespear", year: 1834, slug: "shakespear" },
+  W: { label: "Wiktionary", year: null, slug: "" },
 };
 
 /** The original page scan for a printed page (filenames are 4-digit padded). */

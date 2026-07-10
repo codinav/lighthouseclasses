@@ -26,6 +26,7 @@ import { cn } from "@/lib/utils";
 import {
   BOOKS,
   composeCompound,
+  composeSuffix,
   decodePos,
   FREQ_LABELS,
   loadEntry,
@@ -36,6 +37,7 @@ import {
   search as runSearch,
   searchSubs,
   type ComposedCompound,
+  type ComposedSuffix,
   type PlattsEntry,
   type PlattsIndex,
   type PlattsRow,
@@ -99,6 +101,11 @@ export function PlattsClient() {
   const compound = useMemo(
     () => (idx && /[\s-]/.test(query.trim()) ? composeCompound(idx, query) : null),
     [idx, query]
+  );
+  // jamba-dār, samajhdar, gharwala … — base word + productive suffix
+  const suffixComp = useMemo(
+    () => (idx && query.trim() && !compound && results.length === 0 ? composeSuffix(idx, query) : null),
+    [idx, query, compound, results]
   );
   const view: "home" | "results" | "entry" = query.trim() ? "results" : selected ? "entry" : "home";
 
@@ -186,6 +193,7 @@ export function PlattsClient() {
             subs={subs}
             subResults={subResults}
             compound={compound}
+            suffixComp={suffixComp}
             onOpen={openEntry}
           />
         )}
@@ -202,7 +210,8 @@ export function PlattsClient() {
         {idx && view === "home" && <Home idx={idx} onOpen={openEntry} onSearch={setQuery} />}
 
         <p className="mt-16 text-center text-xs muted">
-          From <span className="font-medium">Platts (1884), Fallon (1879) &amp; Shakespear (1834)</span> — all public domain.
+          From <span className="font-medium">Platts (1884), Fallon (1879) &amp; Shakespear (1834)</span> — all public domain — with
+          modern entries from Wiktionary (CC BY-SA).
           {idx ? ` ${idx.count.toLocaleString()} entries.` : ""} Digitisation: Digital Dictionaries of South Asia, Univ. of Chicago.
         </p>
       </section>
@@ -316,6 +325,38 @@ function SubRow({
   );
 }
 
+function SuffixCard({
+  idx,
+  comp,
+  onOpen,
+}: {
+  idx: PlattsIndex;
+  comp: ComposedSuffix;
+  onOpen: (row: number) => void;
+}) {
+  return (
+    <div className="card mb-4 overflow-hidden">
+      <div className="bg-gold-400/10 px-5 py-4 sm:px-6">
+        <p className="text-2xs font-bold uppercase tracking-widest muted">Derived word — composed from its parts</p>
+        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <span className="text-xl font-bold">{comp.roman}</span>
+          <span dir="rtl" lang="ur" className="pb-1 font-urdu text-3xl leading-[1.9]">
+            {comp.urdu}
+          </span>
+        </div>
+        <p className="mt-1.5 text-xs muted">
+          The suffix <span className="font-semibold">‑{comp.suffix.roman}</span>{" "}
+          <span dir="rtl" lang="ur" className="font-urdu">({comp.suffix.urdu})</span> means:{" "}
+          <span className="font-medium">{comp.suffix.gloss}</span>.
+        </p>
+      </div>
+      <div className="p-2">
+        <ResultRow row={idx.rows[comp.base]} onOpen={() => onOpen(comp.base)} plain />
+      </div>
+    </div>
+  );
+}
+
 function Results({
   idx,
   query,
@@ -323,6 +364,7 @@ function Results({
   subs,
   subResults,
   compound,
+  suffixComp,
   onOpen,
 }: {
   idx: PlattsIndex;
@@ -331,11 +373,12 @@ function Results({
   subs: PlattsSubsIndex | null;
   subResults: number[];
   compound: ComposedCompound | null;
+  suffixComp: ComposedSuffix | null;
   onOpen: (row: number, highlight?: string) => void;
 }) {
   const multi = /[\s-]/.test(query.trim());
   const shownSubs = multi ? subResults : subResults.slice(0, 6);
-  const none = results.length === 0 && shownSubs.length === 0 && !compound;
+  const none = results.length === 0 && shownSubs.length === 0 && !compound && !suffixComp;
   const count = results.length + shownSubs.length;
 
   const entriesSection = results.length > 0 && (
@@ -370,6 +413,7 @@ function Results({
         {count ? `${count >= 60 ? "60+" : count} for “${query.trim()}”` : `No matches for “${query.trim()}”`}
       </p>
       {compound && <CompoundCard idx={idx} compound={compound} onOpen={onOpen} />}
+      {suffixComp && shownSubs.length === 0 && <SuffixCard idx={idx} comp={suffixComp} onOpen={onOpen} />}
       {none && (
         <div className="card p-8 text-center">
           <p className="font-semibold">Nothing found.</p>
@@ -758,10 +802,12 @@ function EntryView({
         )}
 
         <p className="mt-4 px-2 text-xs muted">
-          {BOOKS[entry.bk ?? "P"].label} ({BOOKS[entry.bk ?? "P"].year}), p. {entry.pg}
+          {entry.bk === "W"
+            ? "Wiktionary (CC BY-SA)"
+            : `${BOOKS[entry.bk ?? "P"].label} (${BOOKS[entry.bk ?? "P"].year}), p. ${entry.pg}`}
         </p>
 
-        <PageScan page={entry.pg} bk={entry.bk} />
+        {entry.pg > 0 && <PageScan page={entry.pg} bk={entry.bk} />}
       </div>
 
       <aside className="lg:pt-11">

@@ -233,6 +233,15 @@ async function loadWikt() {
       const v = grab(k);
       if (v.length) cur[out] = [...new Set([...(cur[out] ?? []), ...v])].slice(0, 12);
     }
+    // enough to promote unmatched Wiktionary words to entries of their own
+    cur.word ??= e.word;
+    cur.pos ??= e.pos;
+    cur.roman ??= (e.forms ?? []).find((f) => f.tags?.includes("romanization") || f.tags?.includes("transliteration"))?.form;
+    if (!cur.glosses) {
+      const gl = [];
+      for (const s of e.senses ?? []) if (s.glosses?.length) gl.push(s.glosses[s.glosses.length - 1]);
+      if (gl.length) cur.glosses = [...new Set(gl)].slice(0, 4);
+    }
     if (e.etymology_text && !cur.wety) {
       let t = e.etymology_text.trim();
       if (t.startsWith("Etymology tree")) {
@@ -442,6 +451,7 @@ async function loadDsalEntries(dict, bk) {
   }
   return out;
 }
+const wiktEarly = await loadWikt();
 {
   // Key on Urdu skeleton + first roman token so homographs land on the right
   // sense (dil=heart and dal=leaf both spell دل — keep them apart). Fall back
@@ -479,6 +489,28 @@ async function loadDsalEntries(dict, bk) {
     }
     console.log(`  ${dict}: ${src.length} entries parsed — ${merged} merged into existing words, ${added} new words`);
   }
+
+  // Wiktionary (CC BY-SA) words with no classical entry become entries too —
+  // this is where modern vocabulary comes from.
+  let wiktAdded = 0;
+  for (const [k, w] of wiktEarly) {
+    if (byUrdu.has(k) || !w.word || !w.glosses?.length) continue;
+    const e = {
+      u: w.word,
+      r: w.roman || "",
+      d: "",
+      src: "",
+      ety: "",
+      pos: "",
+      def: w.glosses.join("; "),
+      pg: 0,
+      bk: "W",
+    };
+    entries.push(e);
+    byUrdu.set(k, e);
+    wiktAdded++;
+  }
+  console.log(`  wiktionary: ${wiktAdded} new modern words`);
 }
 
 /* ---- derive Devanagari where missing --------------------------------- */
@@ -574,7 +606,7 @@ function romanToDeva(roman) {
 
 /* ---- enrichment pass ------------------------------------------------ */
 console.log("Enriching …");
-const wikt = await loadWikt();
+const wikt = wiktEarly;
 const { shers, poets, tokenIndex } = await buildShers();
 console.log(`  sher corpus: ${shers.length} couplets from ${poets.length} poets`);
 
